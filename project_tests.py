@@ -100,7 +100,7 @@ def test_optimize(optimize):
     learning_rate = tf.placeholder(tf.float32)
     logits, train_op, cross_entropy_loss = optimize(layers_output, correct_label, learning_rate, num_classes, trainable_vars=tf.trainable_variables())
 
-    _assert_tensor_shape(logits, [None, None, None, num_classes], 'Logits')
+    _assert_tensor_shape(logits, [None, num_classes], 'Logits')
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
