@@ -52,24 +52,26 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes,
     :param vgg_layer4_out:  TF Tensor for VGG Layer 4 output
     :param vgg_layer7_out:  TF Tensor for VGG Layer 7 output
     :param num_classes:     Number of classes to classify
+    :param reg_scale:       L2 regularization scale
+    :param stddev_init:     Standard deviation of param intialization normal distribution
     :return:                The Tensor for the last layer of output
     """
 
     conv1x1_out = tf.layers.conv2d(vgg_layer7_out, num_classes, 1,
                                    padding="same", name="conv1x1_out",
-                                   kernel_initializer= tf.random_normal_initializer(stddev=stddev_init), 
+                                   kernel_initializer=tf.random_normal_initializer(stddev=stddev_init), 
                                    kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
 
     upscale1_out = tf.layers.conv2d_transpose(conv1x1_out, num_classes, 4,
-                                              strides= (2, 2), 
+                                              strides=(2, 2), 
                                               padding="same", name="upscale1_out",
-                                              kernel_initializer= tf.random_normal_initializer(stddev=stddev_init),                                              
+                                              kernel_initializer=tf.random_normal_initializer(stddev=stddev_init),                                              
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
 
     # respective VGG layer with an amount of `num_classes` filters
     vgg_layer4_out_match = tf.layers.conv2d(vgg_layer4_out, num_classes, 1,
                                         padding="same", name="vgg_layer4_out_match",
-                                        kernel_initializer= tf.random_normal_initializer(stddev=stddev_init), 
+                                        kernel_initializer=tf.random_normal_initializer(stddev=stddev_init), 
                                         kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
 
     upscale1_skip_out = tf.add(vgg_layer4_out_match, upscale1_out, name="upscale1_skip_out")
@@ -77,24 +79,24 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes,
     
     
     upscale2_out = tf.layers.conv2d_transpose(upscale1_skip_out, num_classes, 4,
-                                              strides= (2, 2), 
+                                              strides=(2, 2), 
                                               padding="same", name="upscale2_out",
-                                              kernel_initializer= tf.random_normal_initializer(stddev=stddev_init),
+                                              kernel_initializer=tf.random_normal_initializer(stddev=stddev_init),
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
     
     # respective VGG layer with an amount of `num_classes` filters
     vgg_layer3_out_match = tf.layers.conv2d(vgg_layer3_out, num_classes, 1,
                                             padding="same", name="vgg_layer3_out_match",
-                                            kernel_initializer= tf.random_normal_initializer(stddev=stddev_init), 
+                                            kernel_initializer=tf.random_normal_initializer(stddev=stddev_init), 
                                             kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
     
     upscale2_skip_out = tf.add(upscale2_out, vgg_layer3_out_match, name="decoder_output")
     
 
     upscale3_out = tf.layers.conv2d_transpose(upscale2_skip_out, num_classes, 16,
-                                              strides= (8, 8),
+                                              strides=(8, 8),
                                               padding="same", name="upscale3_out",
-                                              kernel_initializer= tf.random_normal_initializer(stddev=stddev_init),
+                                              kernel_initializer=tf.random_normal_initializer(stddev=stddev_init),
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(reg_scale))
 
     return upscale3_out
@@ -102,8 +104,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes,
 tests.test_layers(layers)
 
 
-def optimize(nn_last_layer, correct_label, learning_rate, num_classes,
-             trainable_vars=[]):
+def optimize(nn_last_layer, correct_label, learning_rate, num_classes, trainable_vars=[]):
     """
     Build the TensorFLow loss and optimizer operations.
     :param nn_last_layer:    TF Tensor of the last layer in the neural network
@@ -127,17 +128,17 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes,
 
     return logits, train_op, loss
 
-#tests.test_optimize(optimize)
+tests.test_optimize(optimize)
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_image,
-             correct_label, keep_prob, learning_rate, learning_rate_value, keep_prob_value, last_layer):
+             correct_label, keep_prob, learning_rate, learning_rate_value, keep_prob_value, last_layer, num_classes):
     """
     Train neural network and print out the loss during training.
     :param sess:                 TF Session
     :param epochs:               Number of epochs
     :param batch_size:           Batch size
-    :param get_batches_fn:       Function to get batches of training data.  Call using get_batches_fn(batch_size)
+    :param get_batches_fn:       Function to get batches of training data
     :param train_op:             TF Operation to train the neural network
     :param loss_op:              TF Tensor for the amount of loss
     :param input_image:          TF Placeholder for input images
@@ -146,25 +147,27 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_
     :param learning_rate:        TF Placeholder for learning rate
     :param learning_rate_value:  Actual learning rate value
     :param keep_prob_value:      Actual keep probability value
-    :param last_layer            Last layer in the network
+    :param last_layer:           Last layer in the network
+    :param num_classes:          Number of classes to classify          
     """
 
-    num_classes = tf.shape(last_layer)[-1]
+    model_checkpoint = "./runs/semantic_segmentation_model.ckpt"
     #correct_label_reshape = tf.reshape(correct_label, (-1, num_classes))
     #last_layer_reshape = tf.reshape(last_layer, (-1, num_classes))
 
-    #predicted_label = tf.argmax(tf.reshape(last_layer, (-1, 2)), axis=-1)
-    #sparse_correct_label = tf.argmax(tf.reshape(correct_label, (-1, 2)), axis=-1)
     #mean_iou, update_op = tf.metrics.mean_iou(correct_label_reshape, last_layer_reshape, 2)
     #mean_iou, update_op = tf.metrics.mean_iou(sparse_correct_label, predicted_label, 2)               
     prediction   = tf.argmax(last_layer, axis=-1)
     ground_truth = tf.argmax(correct_label, axis=-1)
-    mean_iou, update_op = tf.metrics.mean_iou(ground_truth, prediction, 2)
+    mean_iou, update_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
 
     saver = tf.train.Saver()
     
     sess.run(tf.global_variables_initializer())
     sess.run(tf.local_variables_initializer())
+
+    saver.restore(sess, model_checkpoint)
+
     for epoch in range(1,epochs+1):
         print("==== Epoch {} ===".format(epoch))
         for img, label in get_batches_fn(batch_size):
@@ -178,7 +181,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_
             print("  Mean IoU = {:.5f}".format(iou_result))
             print("  Loss: {:.3f}".format(loss_result))
 
-        saver.save(sess, './runs/semantic_segmentation_model.ckpt')    
+        saver.save(sess, model_checkpoint)    
 
 #tests.test_train_nn(train_nn)
 
@@ -186,8 +189,8 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_
 
 def run():
     num_classes = 2
-    batch_size = 50
-    epochs = 50
+    batch_size = 30
+    epochs = 40
     learning_rate_value = 5e-4
     keep_prob_value = 0.8
     
@@ -224,13 +227,17 @@ def run():
 
         tvars = tf.trainable_variables()
 
+        # training only variables added on top of VGG16 network
+        """
         trainable_vars = [var for var in tvars if "conv1x1"   in var.name or 
                                                   "vgg_layer" in var.name or
                                                   "upscale"   in var.name or
                                                   "correct"   in var.name]
+        """
         
-        #trainable_vars = tvars
-
+        # training all variables except the not used fully connected layers
+        trainable_vars = [var for var in tvars if "fc6" not in var.name and 
+                                                  "fc7" not in var.name]
         print("trainable vars:")
         for var in trainable_vars:
             print("\t{}".format(var))
@@ -241,7 +248,8 @@ def run():
         # Train NN using the train_nn function
         train_nn(sess, epochs, batch_size, get_batches_fn,
                  train_op, loss, image_input, correct_label,
-                 keep_prob, learning_rate, learning_rate_value, keep_prob_value, last_layer)
+                 keep_prob, learning_rate, learning_rate_value,
+                 keep_prob_value, last_layer, num_classes)
 
 
         # Save inference data using helper.save_inference_samples

@@ -137,9 +137,10 @@ def test_train_nn(train_nn):
             'correct_label': correct_label,
             'keep_prob': keep_prob,
             'learning_rate': learning_rate,
-            'learning_rate_value': 1e3,
+            'learning_rate_value': 1e-3,
             'keep_prob_value': 0.8,
-            'last_layer': correct_label}
+            'last_layer': correct_label,
+            'num_classes': 2}
         _prevent_print(train_nn, parameters)
 
 
