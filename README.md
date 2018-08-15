@@ -1,8 +1,13 @@
 # Semantic Segmentation
 ### Introduction
 In this project, pixels of a road images are labelled using a Fully Convolutional Network (FCN) based on VGG16.
-The network consists of an encoder and decoder part. The encoder extracts features and encodes semantic information in a very compact representation within the "bottleneck" of the network by using only layers with convolutions. From the bottleneck the encoded semantic information is projected back on an image in the decoder part, which is done by upsampling that information into the original image size, which is also referred to as "transposed convolutions" in the deep-learning community.
-In this example the final layer of the decoder network
+It's a partial re-implementation of the network architecture proposed in [Shelhamer et al](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf).
+
+The network consists of an encoder and decoder part. The encoder extracts features and encodes semantic information in a very compact representation within the "bottleneck" of the network by using only convolution layers. From the bottleneck the encoded semantic information is projected back on an image in the decoder part, which is done by upsampling that information to the original image size, also referred to as "transposed convolutions" in the deep-learning community.
+In this example the final layer of the decoder network contains two filters, where 
+
+For evaluation of segmentation tasks a common accuracy metric is the mean intersection over union metric, it computes a ratio between the intersection and the union of two sets of pixels, where one set would be ground-truth and the other the prediction.
+
 
 ### Setup
 
@@ -30,7 +35,8 @@ python main.py
 ### Implementation details
 ...TODO...
 
-### Results
+### Test results
+
 
 Training only the added layers for the decoder network for 50 epochs:
 * Mean IoU: 0.766
