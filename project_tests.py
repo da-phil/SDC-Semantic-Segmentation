@@ -98,14 +98,14 @@ def test_optimize(optimize):
     layers_output = tf.Variable(tf.zeros(shape))
     correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes])
     learning_rate = tf.placeholder(tf.float32)
-    logits, train_op, cross_entropy_loss = optimize(layers_output, correct_label, learning_rate, num_classes, trainable_vars=tf.trainable_variables())
+    logits, train_op, loss, mean_iou_value, mean_iou_update_op = optimize(layers_output, correct_label, learning_rate, num_classes, trainable_vars=tf.trainable_variables())
 
     _assert_tensor_shape(logits, [None, num_classes], 'Logits')
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         sess.run([train_op], {correct_label: np.arange(np.prod(shape)).reshape(shape), learning_rate: 10})
-        test, loss = sess.run([layers_output, cross_entropy_loss], {correct_label: np.arange(np.prod(shape)).reshape(shape)})
+        test, loss = sess.run([layers_output, loss], {correct_label: np.arange(np.prod(shape)).reshape(shape)})
 
     assert test.min() != 0 or test.max() != 0, 'Training operation not changing weights.'
 
@@ -128,6 +128,7 @@ def test_train_nn(train_nn):
     with tf.Session() as sess:
         parameters = {
             'sess': sess,
+            'model_checkpoint': "./runs/foobar.ckp",
             'epochs': epochs,
             'batch_size': batch_size,
             'get_batches_fn': get_batches_fn,
@@ -139,8 +140,8 @@ def test_train_nn(train_nn):
             'learning_rate': learning_rate,
             'learning_rate_value': 1e-3,
             'keep_prob_value': 0.8,
-            'last_layer': correct_label,
-            'num_classes': 2}
+            'mean_iou_value': correct_label,
+            'mean_iou_update_op': correct_label}
         _prevent_print(train_nn, parameters)
 
 

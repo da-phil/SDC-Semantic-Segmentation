@@ -5,6 +5,7 @@ import helper
 import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
+import argparse
 
 
 # Check TensorFlow Version
@@ -112,30 +113,36 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes, trainable
     :param learning_rate:    TF Placeholder for the learning rate
     :param num_classes:      Number of classes to classify
     :param trainable_vars:   List of trainable variables
-    :return:                 Tuple of (logits, train_op, cross_entropy_loss)
+    :return:                 Tuple of (logits, train_op, loss, mean_iou_value, mean_iou_update_op)
     """
 
     # default to all trainable vars, if none are given
     if trainable_vars == []:
         trainable_vars = tf.trainable_variables()
 
-    l2_loss = tf.losses.get_regularization_loss()
     logits  = tf.reshape(nn_last_layer, (-1, num_classes))
-    
+
+    # set-up mean intersection over union metric operations
+    prediction   = tf.argmax(nn_last_layer, axis=-1)
+    ground_truth = tf.argmax(correct_label, axis=-1)
+    mean_iou_value, mean_iou_update_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
+
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=nn_last_layer, labels=correct_label))
+    l2_loss = tf.losses.get_regularization_loss()
     loss = tf.add(cross_entropy_loss, l2_loss)
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss, var_list=trainable_vars)
 
-    return logits, train_op, loss
+    return logits, train_op, loss, mean_iou_value, mean_iou_update_op
 
 tests.test_optimize(optimize)
 
 
-def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_image,
-             correct_label, keep_prob, learning_rate, learning_rate_value, keep_prob_value, last_layer, num_classes):
+def train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn, train_op, loss_op, input_image,
+             correct_label, keep_prob, learning_rate, learning_rate_value, keep_prob_value, mean_iou_value, mean_iou_update_op):
     """
     Train neural network and print out the loss during training.
     :param sess:                 TF Session
+    :param model_checkpoint:     TF checkpoint files to restore network weights from training.
     :param epochs:               Number of epochs
     :param batch_size:           Batch size
     :param get_batches_fn:       Function to get batches of training data
@@ -147,26 +154,25 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_
     :param learning_rate:        TF Placeholder for learning rate
     :param learning_rate_value:  Actual learning rate value
     :param keep_prob_value:      Actual keep probability value
-    :param last_layer:           Last layer in the network
-    :param num_classes:          Number of classes to classify          
+    :param mean_iou_value:       TF operation which yields the IoU value
+    :param mean_iou_update_op:   TF operation which updates the mean IoU over consecutive training/testing cycles     
     """
 
-    model_checkpoint = "./runs/semantic_segmentation_model.ckpt"
-    #correct_label_reshape = tf.reshape(correct_label, (-1, num_classes))
-    #last_layer_reshape = tf.reshape(last_layer, (-1, num_classes))
-
-    #mean_iou, update_op = tf.metrics.mean_iou(correct_label_reshape, last_layer_reshape, 2)
-    #mean_iou, update_op = tf.metrics.mean_iou(sparse_correct_label, predicted_label, 2)               
-    prediction   = tf.argmax(last_layer, axis=-1)
-    ground_truth = tf.argmax(correct_label, axis=-1)
-    mean_iou, update_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
-
     saver = tf.train.Saver()
-    
+
+    # be save and initialize all variables, global as well as local
+    # because not all variables or operations are covered by restoring of a checkpoint
     sess.run(tf.global_variables_initializer())
     sess.run(tf.local_variables_initializer())
 
-    saver.restore(sess, model_checkpoint)
+    # try to restore network weights from previous training runs
+    try:
+        saver.restore(sess, model_checkpoint)
+    except:
+        # if no weights are found we initialize the network
+        print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
+        print("Training the network from scratch!")
+
 
     for epoch in range(1,epochs+1):
         print("==== Epoch {} ===".format(epoch))
@@ -175,24 +181,63 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, loss_op, input_
                          learning_rate: learning_rate_value,
                          input_image: img,
                          correct_label: label}
-            #print("shape(last_layer): ", sess.run(tf.shape(correct_label), feed_dict=feed_dict))
-            _, loss_result, _ = sess.run([train_op, loss_op, update_op], feed_dict=feed_dict)
-            iou_result = sess.run(mean_iou)
-            print("  Mean IoU = {:.5f}".format(iou_result))
-            print("  Loss: {:.3f}".format(loss_result))
+            _, loss_result, _ = sess.run([train_op, loss_op, mean_iou_update_op],
+                                         feed_dict=feed_dict)
+            iou_result = sess.run(mean_iou_value)
+            print("  Loss: {:.3f},  Mean IoU: {:.5f}".format(loss_result, iou_result))
 
         saver.save(sess, model_checkpoint)    
 
 #tests.test_train_nn(train_nn)
 
 
+def test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, keep_prob, image_input,
+            loss_op, correct_label, mean_iou_value, mean_iou_update_op):
+    """
+    Test neural network on images and print out the loss and mean IoU
+    :param sess:                TF Session
+    :param model_checkpoint:    TF checkpoint files to restore network weights from training.
+    :param runs_dir:            Directory in which segmented images are stored in.
+    :param data_dir:            Directory with test images.
+    :param image_shape:         Shape which is expected by network.
+    :param logits_op:           TF operation for logits.
+    :param loss_op:             TF Tensor for the amount of loss
+    :param image_input:         TF Placeholder for input images
+    :param correct_label:       TF Placeholder for label images
+    :param keep_prob:           TF Placeholder for dropout keep probability
+    :param mean_iou_value:      TF operation which yields the IoU value
+    :param mean_iou_update_op:  TF operation which updates the mean IoU over consecutive training/testing cycles     
+    """
 
-def run():
+    saver = tf.train.Saver()
+    try:
+        saver.restore(sess, model_checkpoint)
+    except:
+        print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
+        print("You need to either provide the required checkpoint files or train the network from scratch!")
+        return
+
+    # Save inference data using helper.save_inference_samples
+    helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits_op, keep_prob, image_input,
+                                  loss_op, correct_label, mean_iou_value, mean_iou_update_op)
+
+
+
+
+if __name__ == '__main__':
+    mode_default = "train"
+    parser = argparse.ArgumentParser(description="Program to train and run semantic segmentation on the KITTI dataset.")
+    parser.add_argument("-m", "--mode", type=str, metavar="", default=mode_default,
+                        help="Mode (train, or test). Default: {}".format(mode_default))
+
+    args = parser.parse_args()
+
+    model_checkpoint = "./runs/semantic_segmentation_model.ckpt"
     num_classes = 2
-    batch_size = 30
-    epochs = 40
-    learning_rate_value = 5e-4
-    keep_prob_value = 0.8
+    batch_size = 25
+    epochs = 50
+    learning_rate_value = 2e-5
+    keep_prob_value = 0.7
     
     image_shape = (160, 576)
     data_dir = './data'
@@ -213,10 +258,7 @@ def run():
     with tf.Session() as sess:
         
         # Path to vgg model
-        vgg_path = os.path.join(data_dir, 'vgg')
-        
-        # Create function to get batches
-        get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
+        vgg_path = os.path.join(data_dir, "vgg")
 
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
@@ -226,8 +268,7 @@ def run():
         last_layer = layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes)
 
         tvars = tf.trainable_variables()
-
-        # training only variables added on top of VGG16 network
+        # training only variables added on top of VGG16 network, i.e.: the decoder part
         """
         trainable_vars = [var for var in tvars if "conv1x1"   in var.name or 
                                                   "vgg_layer" in var.name or
@@ -238,25 +279,31 @@ def run():
         # training all variables except the not used fully connected layers
         trainable_vars = [var for var in tvars if "fc6" not in var.name and 
                                                   "fc7" not in var.name]
-        print("trainable vars:")
+        print("Trainable vars:")
         for var in trainable_vars:
             print("\t{}".format(var))
 
         # Set-up optimizer
-        logits, train_op, loss = optimize(last_layer, correct_label, learning_rate, num_classes, trainable_vars)
-        
-        # Train NN using the train_nn function
-        train_nn(sess, epochs, batch_size, get_batches_fn,
-                 train_op, loss, image_input, correct_label,
-                 keep_prob, learning_rate, learning_rate_value,
-                 keep_prob_value, last_layer, num_classes)
+        return_list = optimize(last_layer, correct_label, learning_rate, num_classes, trainable_vars)
+        logits_op, train_op, loss_op, mean_iou_value, mean_iou_update_op = return_list
 
 
-        # Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
+        if args.mode == "train": 
+            print("====== Training network ======")
+            # Create function to get batches
+            get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, "data_road/training"), image_shape)
+
+            # Train NN using the train_nn function
+            train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn,
+                     train_op, loss_op, image_input, correct_label,
+                     keep_prob, learning_rate, learning_rate_value,
+                     keep_prob_value, mean_iou_value, mean_iou_update_op)
+            print("Training complete, in order to test the trained network, you can call the program in the test mode by '--mode=test'")
+
+        else:
+            print("====== Running inference with test images ======")
+            test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, keep_prob, image_input,
+                    loss_op, correct_label, mean_iou_value, mean_iou_update_op)
+
 
         # OPTIONAL: Apply the trained model to a video
-
-
-if __name__ == '__main__':
-    run()
