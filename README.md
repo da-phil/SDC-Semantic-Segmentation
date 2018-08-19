@@ -69,11 +69,11 @@ Training only the added convolutional layers for the decoder network for approx.
 * Loss: 0.504
 
 Training all convolutional layers of the encoder and decoder for approx. 50 epochs:
-* Mean IoU: 0.95472
-* Loss: 0.176
+* Mean IoU: 0.934
+* Loss: 0.146
 
 ### Test results
-Unfortunately there is no ground-truth data available in the provided KITTI test dataset, therefore no accuracy metric such as the IoU can be provided, therefore only examples where the segmentation process worked well and not well are discussed briefly.
+Unfortunately there is no ground-truth data available in the provided KITTI test dataset, therefore no accuracy metric such as the IoU can be provided. Instead, only examples where the segmentation process worked well and not well are discussed briefly.
 
 Here is an example where the segmentation worked well:
 
