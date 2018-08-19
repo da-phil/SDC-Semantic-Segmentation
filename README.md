@@ -82,16 +82,19 @@ Here is an example where the segmentation worked well:
 
 And here we see an example of a less accurate segmentation:
 
-![](imgs/um_000092.png)
+![](imgs/um_000074.png)
 
 It seems that the VGG16 based network doesn't generalize well on shady road areas.
 This might be improved when a proper normalization step is applied on the images before feeding it into the network.
 Or even image augmentations affecting the brightness and contrast might help to improve the segmentation accuracy.
 
+Here I applied the semantic segmentation network on videos which were used in the _advanced lane finding_ project from the first Term of the SelfDrivingCar Nanodegree:
+
+
 ### Conclusion / Future work
 After several training attempts it can be concluded that the used VGG16 base architecture seems to be slow and outdated compared to modern MobileNet lightweight network architectures, it is also not easy to train to achieve state-of-the-art results.
 Possible improvements:
-* Better training strategy with automatic weight decay and early stopping for achieving better loss and mean IoU values
+* Better training strategy with smarter weight decay and early stopping for achieving better loss and mean IoU values
 * Applying image augmentations during training
 * Try out a lightweight MobileNet variant for faster training / testing cycles
 * Exporting graph as protobuf file and optimize it, this should reduce the time to build up the graph with all the made modifications
