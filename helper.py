@@ -115,8 +115,7 @@ def gen_batch_function(data_folder, image_shape):
     return get_batches_fn
 
 
-def gen_test_output(sess, logits, keep_prob, image_input_op, image_file, image_shape,
-                    loss, correct_label):
+def segment_image(sess, logits, keep_prob, image_input_op, image, image_shape):
     """
     Generate test output using the test images
     TODO: Get ground-truth data for test image, then loss and IoU can be computed
@@ -125,12 +124,12 @@ def gen_test_output(sess, logits, keep_prob, image_input_op, image_file, image_s
     :param logits:          TF Tensor for the logits
     :param keep_prob:       TF Placeholder for the dropout keep robability
     :param image_input_op:  TF Placeholder for the image placeholder
-    :param image_file:      Path to the image
+    :param image:           Image as ND array
     :param image_shape:     Tuple - Shape of image
     :return:                Output for for each test image
     """
 
-    image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
+    image = scipy.misc.imresize(image, image_shape)
     """
     # inference with loss and mean IoU computation:
     mean_iou_value, mean_iou_update_op = tf.metrics.mean_iou(ground_truth, prediction, 2)
@@ -153,22 +152,27 @@ def gen_test_output(sess, logits, keep_prob, image_input_op, image_file, image_s
     mask = scipy.misc.toimage(mask, mode="RGBA")
     street_im = scipy.misc.toimage(image)
     street_im.paste(mask, box=None, mask=mask)
-    #print("Results for image '{}': Loss={}, IoU={}".format(image_file, loss_result, iou_result))
 
-    return os.path.basename(image_file), np.array(street_im)
+    return np.asarray(street_im)
 
 
-def save_inference_samples(runs_dir, data_dir, sess, image_shape):
-
+def save_inference_samples(runs_dir, model_checkpoint, data_dir, sess, image_shape):
     graph = tf.get_default_graph()
-    input_image_op         = graph.get_tensor_by_name("image_input:0")
+    saver = tf.train.Saver()
+    try:
+        saver.restore(sess, model_checkpoint)
+    except:
+        print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
+        print("You need to either provide the required checkpoint files or train the network from scratch!")
+        return
+
+    input_image_op      = graph.get_tensor_by_name("image_input:0")
     logits_op           = graph.get_tensor_by_name("decoder_logits:0")
     keep_prob           = graph.get_tensor_by_name("keep_prob:0")
     loss                = graph.get_tensor_by_name("decoder_loss:0")
     correct_label       = graph.get_tensor_by_name("decoder_loss:0")
     prediction          = graph.get_tensor_by_name("decoder_prediction:0")
     ground_truth        = graph.get_tensor_by_name("decoder_ground_truth:0")
-
 
     # Make folder for current run
     output_dir = os.path.join(runs_dir, str(time.time()))
@@ -180,7 +184,46 @@ def save_inference_samples(runs_dir, data_dir, sess, image_shape):
     print("Saving test images to: {}".format(output_dir))
     data_folder = os.path.join(data_dir, "data_road/testing")
     for image_file in glob(os.path.join(data_folder, 'image_2', '*.png')):
-        name, image = gen_test_output(sess, logits_op, keep_prob, input_image_op, image_file, image_shape,
-                                      loss, correct_label)
+        image = scipy.misc.imread(image_file)
+        segmented_image = segment_image(sess, logits_op, keep_prob, input_image_op, image, image_shape)
 
-        scipy.misc.imsave(os.path.join(output_dir, name), image)
+        scipy.misc.imsave(os.path.join(output_dir, os.path.basename(image_file)), segmented_image)
+
+
+def process_video_image(sess, logits, keep_prob, image_input_op, image_src, image_shape):
+    # first crop away top of image to correct aspect of `image_shape` to match `image_shape`
+    image_src_shape  = image_src.shape
+    new_y = (image_shape[0] * image_src_shape[1]) // image_shape[1]
+    image_crop = image_src[new_y:,:]
+
+    return segment_image(sess, logits, keep_prob, image_input_op, image_crop, image_shape)
+
+
+def save_inference_video_samples(sess, videos, model_checkpoint, video_fps, video_output_folder, image_shape):
+    from moviepy.editor import VideoFileClip, vfx
+
+    graph = tf.get_default_graph()
+    saver = tf.train.Saver()
+    try:
+        saver.restore(sess, model_checkpoint)
+    except:
+        print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
+        print("You need to either provide the required checkpoint files or train the network from scratch!")
+        return
+
+    input_image_op  = graph.get_tensor_by_name("image_input:0")
+    logits_op       = graph.get_tensor_by_name("decoder_logits:0")
+    keep_prob       = graph.get_tensor_by_name("keep_prob:0")
+    
+    for video in videos:
+        if not os.path.exists(video_output_folder):
+            os.makedirs(video_output_folder)
+        result_path = video_output_folder + os.path.basename(video)
+        if not os.path.isfile(video):
+            print("Video {} doesn't exist!".format(video))
+        else:
+            clip1 = VideoFileClip(video) #.subclip(*clip_part)
+            video_slowdown_factor = video_fps / clip1.fps
+            clip1 = clip1.fx(vfx.speedx, video_slowdown_factor)
+            white_clip = clip1.fl_image(lambda img: process_video_image(sess, logits_op, keep_prob, input_image_op, img, image_shape))
+            white_clip.write_videofile(result_path, audio=False, fps=video_fps)
