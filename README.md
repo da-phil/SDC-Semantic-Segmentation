@@ -43,21 +43,46 @@ python main.py --mode=test
 ```
 
 ### Implementation details
+As base a pre-trained VGG16 convolutional network was used as an encoder network, where only the convolutions have been used, similar to the implementation proposed in [Shelhamer et al](https://people.eecs.berkeley.edu/~jonlong/long_shelhamer_fcn.pdf).
+The following operations were extracted from the pre-trained VGG16:
+* `image_input`
+* `keep_prob`
+* `layer3_out` (pooling output)
+* `layer4_out` (pooling output)
+* `layer7_out` (pooling output)
+
+Layer 7 of the VGG16 network was taken as bottleneck of the encoder-decoder network, a 1x1 convolution with the output of 2 classes was added to adjust the encoder to have only two classes. 
+From this layer on the decoder network starts with upsampling layers (transpose convolution), the first one with a filter size of 4 and a stride of 2.
+This one was added elementwise to a skip connection from the `layer_4_out` encoder layer.
+The resulting layer was then upscaled again by a filter size of 4 and a stride of 2. Again this layer was added elementwise with a skip connection to the `layer_3_out` encoder layer. The last upscale layer consists of a filter size of 16 and a stride of 8, which eventually brings the image back to its original resolution.
+
 
 
 
 ### Training results
-Training only the added layers for the decoder network for 50 epochs:
+Training only the added convolutional layers for the decoder network for 50 epochs:
 * Mean IoU: 0.766
 * Loss: 0.504
 
-Training all layers of the encoder and decoder for 50 epochs:
-* Mean IoU: 0.844
-* Loss: 0.157
+Training all convolutional layers of the encoder and decoder for 60 epochs:
+* Mean IoU: 0.95472
+* Loss: 0.176
 
 ### Test results
+Unfortunately there is no ground-truth data available in the provided KITTI test dataset, therefore no accuracy metric such as the IoU can be provided, therefore only examples where the segmentation process worked well and not well are discussed briefly.
+
+Here is an example where the segmentation worked well:
+
+![](imgs/umm_000023.png)
 
 
+And here we see an example of a less accurate segmentation:
+
+![](imgs/um_000092.png)
+
+It seems that the VGG16 based network doesn't generalize well on shady road areas.
+This might be improved when a proper normalization step is applied on the images before feeding it into the network.
+Or even image augmentations affecting the brightness and contrast might help to improve the segmentation accuracy.
 
 
 
