@@ -120,19 +120,21 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes, trainable
     if trainable_vars == []:
         trainable_vars = tf.trainable_variables()
 
-    logits  = tf.reshape(nn_last_layer, (-1, num_classes))
+    logits_op  = tf.reshape(nn_last_layer, (-1, num_classes), name="decoder_logits")
 
     # set-up mean intersection over union metric operations
-    prediction   = tf.argmax(nn_last_layer, axis=-1)
-    ground_truth = tf.argmax(correct_label, axis=-1)
+    prediction   = tf.argmax(nn_last_layer, axis=-1, name="decoder_prediction")
+    ground_truth = tf.argmax(correct_label, axis=-1, name="decoder_ground_truth")
     mean_iou_value, mean_iou_update_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
 
-    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=nn_last_layer, labels=correct_label))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=nn_last_layer,
+                                                                                   labels=correct_label,
+                                                                                   name="decoder_cross_entropy_loss"))
     l2_loss = tf.losses.get_regularization_loss()
-    loss = tf.add(cross_entropy_loss, l2_loss)
+    loss = tf.add(cross_entropy_loss, l2_loss, name="decoder_loss")
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss, var_list=trainable_vars)
 
-    return logits, train_op, loss, mean_iou_value, mean_iou_update_op
+    return logits_op, train_op, loss, mean_iou_value, mean_iou_update_op
 
 tests.test_optimize(optimize)
 
@@ -160,7 +162,7 @@ def train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn, train_o
 
     saver = tf.train.Saver()
 
-    # be save and initialize all variables, global as well as local
+    # initialize all variables, global as well as local
     # because not all variables or operations are covered by restoring of a checkpoint
     sess.run(tf.global_variables_initializer())
     sess.run(tf.local_variables_initializer())
@@ -168,6 +170,7 @@ def train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn, train_o
     # try to restore network weights from previous training runs
     try:
         saver.restore(sess, model_checkpoint)
+        print("Using model parameters from checkpoint '{}'".format(model_checkpoint))
     except:
         # if no weights are found we initialize the network
         print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
@@ -191,8 +194,7 @@ def train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn, train_o
 #tests.test_train_nn(train_nn)
 
 
-def test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, keep_prob, image_input,
-            loss_op, correct_label, mean_iou_value, mean_iou_update_op):
+def test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape):
     """
     Test neural network on images and print out the loss and mean IoU
     :param sess:                TF Session
@@ -200,13 +202,6 @@ def test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, 
     :param runs_dir:            Directory in which segmented images are stored in.
     :param data_dir:            Directory with test images.
     :param image_shape:         Shape which is expected by network.
-    :param logits_op:           TF operation for logits.
-    :param loss_op:             TF Tensor for the amount of loss
-    :param image_input:         TF Placeholder for input images
-    :param correct_label:       TF Placeholder for label images
-    :param keep_prob:           TF Placeholder for dropout keep probability
-    :param mean_iou_value:      TF operation which yields the IoU value
-    :param mean_iou_update_op:  TF operation which updates the mean IoU over consecutive training/testing cycles     
     """
 
     saver = tf.train.Saver()
@@ -218,26 +213,27 @@ def test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, 
         return
 
     # Save inference data using helper.save_inference_samples
-    helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits_op, keep_prob, image_input,
-                                  loss_op, correct_label, mean_iou_value, mean_iou_update_op)
+    helper.save_inference_samples(runs_dir, data_dir, sess, image_shape)
 
 
 
 
 if __name__ == '__main__':
     mode_default = "train"
+    model_checkpoint_default = "./runs/semantic_segmentation_model.ckpt"
+
     parser = argparse.ArgumentParser(description="Program to train and run semantic segmentation on the KITTI dataset.")
     parser.add_argument("-m", "--mode", type=str, metavar="", default=mode_default,
                         help="Mode (train, or test). Default: {}".format(mode_default))
-
+    parser.add_argument("-c", "--model_checkpoint", type=str, metavar="", default=model_checkpoint_default,
+                        help="Path to model checkpoint path. Default: {}".format(model_checkpoint_default))
     args = parser.parse_args()
 
-    model_checkpoint = "./runs/semantic_segmentation_model.ckpt"
     num_classes = 2
     batch_size = 25
     epochs = 50
-    learning_rate_value = 2e-5
-    keep_prob_value = 0.7
+    learning_rate_value = 1e-5
+    keep_prob_value = 0.85
     
     image_shape = (160, 576)
     data_dir = './data'
@@ -294,7 +290,7 @@ if __name__ == '__main__':
             get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, "data_road/training"), image_shape)
 
             # Train NN using the train_nn function
-            train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn,
+            train_nn(sess, args.model_checkpoint, epochs, batch_size, get_batches_fn,
                      train_op, loss_op, image_input, correct_label,
                      keep_prob, learning_rate, learning_rate_value,
                      keep_prob_value, mean_iou_value, mean_iou_update_op)
@@ -302,8 +298,7 @@ if __name__ == '__main__':
 
         else:
             print("====== Running inference with test images ======")
-            test_nn(sess, model_checkpoint, runs_dir, data_dir, image_shape, logits_op, keep_prob, image_input,
-                    loss_op, correct_label, mean_iou_value, mean_iou_update_op)
+            test_nn(sess, args.model_checkpoint, runs_dir, data_dir, image_shape)
 
 
         # OPTIONAL: Apply the trained model to a video
