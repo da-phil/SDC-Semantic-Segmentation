@@ -57,12 +57,12 @@ This one was added elementwise to a skip connection from the `layer_4_out` encod
 The resulting layer was then upscaled again by a filter size of 4 and a stride of 2. Again this layer was added elementwise with a skip connection to the `layer_3_out` encoder layer. The last upscale layer consists of a filter size of 16 and a stride of 8, which eventually brings the image back to its original resolution.
 
 
-### Training results
+### Training
 I played with training those two sets of variables:
 * only the added decoder layers, except the fully connected ones
 * all encoder and decoder layers, except the fully connected ones
 
-Because it was difficult to converge to a low loss and mean IoU value, training was done by manually decreasing the learning rate approx. every 10 epochs, from 1e-3 to 1e-7.
+Because it was difficult to converge to a low loss and mean IoU value, training was done by manually decreasing the learning rate approx. every 10 epochs, from 1e-3 to 1e-7. The dropout keep probability was set to `0.8` for all training runs.
 
 Training only the added convolutional layers for the decoder network for approx. 60 epochs:
 * Mean IoU: 0.766
@@ -90,6 +90,12 @@ Or even image augmentations affecting the brightness and contrast might help to 
 
 ### Conclusion / Future work
 After several training attempts it can be concluded that the used VGG16 base architecture seems to be slow and outdated compared to modern MobileNet lightweight network architectures, it is also not easy to train to achieve state-of-the-art results.
+Possible improvements:
+* Better training strategy with automatic weight decay and early stopping for achieving better loss and mean IoU values
+* Applying image augmentations during training
+* Try out a lightweight MobileNet variant for faster training / testing cycles
+* Exporting graph as protobuf file and optimize it, this should reduce the time to build up the graph with all the made modifications
+* Eventually export a highly optimized graph as protobuf file for inference, with all reasonable optimizations for inference turned on
 
 
 ### Project notes
