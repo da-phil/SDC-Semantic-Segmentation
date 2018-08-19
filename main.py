@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Program to train and run semantic segmentation on the KITTI dataset.")
     parser.add_argument("-m", "--mode", type=str, metavar="", default=mode_default,
-                        help="Mode (train, or test). Default: {}".format(mode_default))
+                        help="Mode (train, test, video). Default: {}".format(mode_default))
     parser.add_argument("-c", "--model_checkpoint", type=str, metavar="", default=model_checkpoint_default,
                         help="Path to model checkpoint path. Default: {}".format(model_checkpoint_default))
     args = parser.parse_args()
