@@ -57,14 +57,18 @@ This one was added elementwise to a skip connection from the `layer_4_out` encod
 The resulting layer was then upscaled again by a filter size of 4 and a stride of 2. Again this layer was added elementwise with a skip connection to the `layer_3_out` encoder layer. The last upscale layer consists of a filter size of 16 and a stride of 8, which eventually brings the image back to its original resolution.
 
 
-
-
 ### Training results
-Training only the added convolutional layers for the decoder network for 50 epochs:
+I played with training those two sets of variables:
+* only the added decoder layers, except the fully connected ones
+* all encoder and decoder layers, except the fully connected ones
+
+Because it was difficult to converge to a low loss and mean IoU value, training was done by manually decreasing the learning rate approx. every 10 epochs, from 1e-3 to 1e-7.
+
+Training only the added convolutional layers for the decoder network for approx. 60 epochs:
 * Mean IoU: 0.766
 * Loss: 0.504
 
-Training all convolutional layers of the encoder and decoder for 60 epochs:
+Training all convolutional layers of the encoder and decoder for approx. 50 epochs:
 * Mean IoU: 0.95472
 * Loss: 0.176
 
@@ -84,6 +88,8 @@ It seems that the VGG16 based network doesn't generalize well on shady road area
 This might be improved when a proper normalization step is applied on the images before feeding it into the network.
 Or even image augmentations affecting the brightness and contrast might help to improve the segmentation accuracy.
 
+### Conclusion / Future work
+After several training attempts it can be concluded that the used VGG16 base architecture seems to be slow and outdated compared to modern MobileNet lightweight network architectures, it is also not easy to train to achieve state-of-the-art results.
 
 
 ### Project notes
