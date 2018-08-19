@@ -6,7 +6,9 @@ import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
 import argparse
-
+import cv2
+import numpy as np
+import scipy.misc
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
@@ -176,12 +178,15 @@ def train_nn(sess, model_checkpoint, epochs, batch_size, get_batches_fn, train_o
         print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
         print("Training the network from scratch!")
 
-
+    decay = learning_rate_value  #learning_rate_value / epochs
+    current_learning_rate = learning_rate_value
     for epoch in range(1,epochs+1):
         print("==== Epoch {} ===".format(epoch))
+        current_learning_rate /= (1 + decay*epoch)
+        print("current learning rate: {:.8f}".format(current_learning_rate))
         for img, label in get_batches_fn(batch_size):
             feed_dict = {keep_prob: keep_prob_value,
-                         learning_rate: learning_rate_value,
+                         learning_rate: current_learning_rate,
                          input_image: img,
                          correct_label: label}
             _, loss_result, _ = sess.run([train_op, loss_op, mean_iou_update_op],
@@ -231,9 +236,9 @@ if __name__ == '__main__':
 
     num_classes = 2
     batch_size = 25
-    epochs = 50
-    learning_rate_value = 1e-5
-    keep_prob_value = 0.85
+    epochs = 30
+    learning_rate_value = 3e-5
+    keep_prob_value = 0.8
     
     image_shape = (160, 576)
     data_dir = './data'
@@ -296,9 +301,63 @@ if __name__ == '__main__':
                      keep_prob_value, mean_iou_value, mean_iou_update_op)
             print("Training complete, in order to test the trained network, you can call the program in the test mode by '--mode=test'")
 
-        else:
+        elif args.mode == "test":
             print("====== Running inference with test images ======")
             test_nn(sess, args.model_checkpoint, runs_dir, data_dir, image_shape)
 
+        elif args.mode == "video":
+            # OPTIONAL: Apply the trained model to a video
+            from moviepy.editor import VideoFileClip
+            from IPython.display import HTML
+            from moviepy.editor import *
 
-        # OPTIONAL: Apply the trained model to a video
+            video_fps = 10
+            video_output_folder = "videos_output/"
+            videos = [
+               "data/project_video.mp4",
+               "data/challenge_video.mp4",
+               "data/harder_challenge_video.mp4"
+            ]
+
+            def process_video_image(sess, logits, keep_prob, image_input_op, image_src, image_shape):
+                # first crop image to correct aspect of `image_shape`
+                image_src_shape  = image_src.shape
+                new_y = (image_shape[0] * image_src_shape[1]) // image_shape[1]
+                image_crop = image_src[new_y:,:]
+                image_resized = scipy.misc.imresize(image_crop, image_shape)
+
+                feed_dict = {keep_prob: 1.0,
+                             image_input_op: [image_resized]}
+                im_softmax = sess.run([tf.nn.softmax(logits)],
+                                      feed_dict=feed_dict)
+                im_softmax = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
+                segmentation = (im_softmax > 0.5).reshape(image_shape[0], image_shape[1], 1)
+                mask = np.dot(segmentation, np.array([[0, 255, 0, 127]]))
+                mask = scipy.misc.toimage(mask, mode="RGBA")
+                street_im = scipy.misc.toimage(image_resized)
+                street_im.paste(mask, box=None, mask=mask)
+                return np.asarray(street_im)
+
+            saver = tf.train.Saver()
+            try:
+                saver.restore(sess, args.model_checkpoint)
+            except:
+                print("Couldn't load model last checkpoint ({}).".format(model_checkpoint))
+                print("You need to either provide the required checkpoint files or train the network from scratch!")
+            
+            for video in videos:
+                if not os.path.exists(video_output_folder):
+                    os.makedirs(video_output_folder)
+                result_path = video_output_folder + os.path.basename(video)
+                if not os.path.isfile(video):
+                    print("Video {} doesn't exist!".format(video))
+                else:
+                    clip1 = VideoFileClip(video) #.subclip(*clip_part)
+                    video_slowdown_factor = video_fps / clip1.fps
+                    clip1 = clip1.fx(vfx.speedx, video_slowdown_factor)
+                    white_clip = clip1.fl_image(lambda img: process_video_image(sess, logits_op, keep_prob, image_input, img, image_shape))
+                    white_clip.write_videofile(result_path, audio=False, fps=video_fps)
+
+
+        else:
+            print("Mode '{}' not known!".format(args.mode))
