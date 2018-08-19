@@ -88,6 +88,13 @@ It seems that the VGG16 based network doesn't generalize well on shady road area
 This might be improved when a proper normalization step is applied on the images before feeding it into the network.
 Or even image augmentations affecting the brightness and contrast might help to improve the segmentation accuracy.
 
+The network seems also still struggle with distinguishing between road and pedestrian way, which is seen in the next images:
+
+![](imgs/uu_000034.png)
+
+![](imgs/uu_000043.png)
+
+
 Here I applied the semantic segmentation network on videos which were used in the _advanced lane finding_ project from the first Term of the SelfDrivingCar Nanodegree:
 
 
