@@ -23,17 +23,28 @@ Make sure you have the following Python modules installed:
  
 #### Dataset
 Download the [Kitti Road dataset](http://www.cvlibs.net/datasets/kitti/eval_road.php) from [here](http://www.cvlibs.net/download.php?file=data_road.zip). Extract the dataset in the `data` folder.  This will create the folder `data_road` with all the training a test images.
+For this purpose there is also a helper function (`maybe_download_pretrained_vgg()`) within the file `helper.py`.
 
 #### Run the training
 Run the following command to start the training:
 ```
-python main.py
+python main.py 
+```
+or explicitly start in training mode:
+```
+python main.py --mode=train
 ```
 **Note** If running this in Jupyter Notebook system messages, such as those regarding test status, may appear in the terminal rather than the notebook.
  
- 
+#### Run inference on test images
+Call `main.py` with `--mode=test` in order to run the previously trained network on the test images located in `data/data_road/testing`, which also creates a new folder in `runs/` containing the test images with segementation applied.
+```
+python main.py --mode=test
+```
+
 ### Implementation details
-...TODO...
+
+
 
 ### Training results
 Training only the added layers for the decoder network for 50 epochs:
