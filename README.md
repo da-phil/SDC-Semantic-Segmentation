@@ -96,6 +96,9 @@ The network seems also still struggle with distinguishing between road and pedes
 
 
 Here I applied the semantic segmentation network on videos which were used in the _advanced lane finding_ project from the first Term of the SelfDrivingCar Nanodegree:
+* [videos_output/project_video.mp4](videos_output/project_video.mp4)
+* [videos_output/challenge_video.mp4](videos_output/challenge_video.mp4)
+* [videos_output/harder_challenge_video.mp4](videos_output/harder_challenge_video.mp4)
 
 
 ### Conclusion / Future work
